@@ -28,8 +28,21 @@ def run_ai(text):
     return result['results'][0]['outputText']
 
 def lambda_handler(event, context):
+    # Handle preflight OPTIONS request for CORS
+    if event.get("httpMethod") == "OPTIONS":
+        return {
+            'statusCode': 200,
+            'headers': {
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Methods': 'POST,OPTIONS',
+                'Access-Control-Allow-Headers': 'Content-Type',
+                'Access-Control-Max-Age': '86400'
+            },
+            'body': ''
+        }
+
     try:
-        # Handle direct HTTP API JSON input
+        # Handle POST
         if 'body' in event:
             body = json.loads(event['body'])
         else:
@@ -37,7 +50,11 @@ def lambda_handler(event, context):
 
         text = body.get('text')
         if not text:
-            return {'statusCode': 400, 'body': json.dumps({'error': 'Missing text'})}
+            return {
+                'statusCode': 400,
+                'headers': {'Access-Control-Allow-Origin': '*'},
+                'body': json.dumps({'error': 'Missing text'})
+            }
 
         # Generate unique request ID
         request_id = str(uuid.uuid4())
@@ -49,7 +66,6 @@ def lambda_handler(event, context):
             'summary': ai_output,
             'length': len(text),
             'timestamp': datetime.now().isoformat()
-            
         }
 
         # Save results to DynamoDB
@@ -64,7 +80,10 @@ def lambda_handler(event, context):
             'statusCode': 200,
             'headers': {
                 'Content-Type': 'application/json',
-                'Access-Control-Allow-Origin': '*'
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Methods': 'POST,OPTIONS',
+                'Access-Control-Allow-Headers': 'Content-Type',
+                'Access-Control-Max-Age': '86400'
             },
             'body': json.dumps({
                 'requestId': request_id,
@@ -73,4 +92,14 @@ def lambda_handler(event, context):
         }
 
     except Exception as e:
-        return {'statusCode': 500, 'body': json.dumps({'error': str(e)})}
+        return {
+            'statusCode': 500,
+            'headers': {
+                'Content-Type': 'application/json',
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Methods': 'POST,OPTIONS',
+                'Access-Control-Allow-Headers': 'Content-Type',
+                'Access-Control-Max-Age': '86400'
+            },
+            'body': json.dumps({'error': str(e)})
+        }
