@@ -7,6 +7,25 @@ from datetime import datetime
 dynamodb = boto3.resource('dynamodb')
 table = dynamodb.Table('ai-microservice-results')
 
+# Initialize Bedrock client
+bedrock = boto3.client('bedrock-runtime')
+
+def run_ai(text):
+    # Calls Amazon Titan Text Lite to generate a summary of the input text
+    response = bedrock.invoke_model(
+        modelId='amazon.titan-text-lite-v1',
+        accept='application/json',
+        contentType='application/json',
+        body=json.dumps({
+            'inputText': text,
+            'textGenerationConfig': {
+                'maxTokenCount': 200,
+                'temperature': 0.3
+            }
+        })
+    )
+    result = json.loads(response['body'].read())
+    return result['results'][0]['outputText']
 
 def lambda_handler(event, context):
     try:
@@ -23,11 +42,14 @@ def lambda_handler(event, context):
         # Generate unique request ID
         request_id = str(uuid.uuid4())
 
-        # Placeholder AI logic
+        # AI summary using Bedrock
+        ai_output = run_ai(text)
+
         ai_result = {
-            'summary': text[:150] + ('...' if len(text) > 150 else ''),
+            'summary': ai_output,
             'length': len(text),
-            'timestamp': datetime.utcnow().isoformat(),
+            'timestamp': datetime.now().isoformat()
+            
         }
 
         # Save results to DynamoDB
