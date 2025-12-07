@@ -18,7 +18,7 @@ except Exception:
 
 # Common CORS headers
 CORS_HEADERS = {
-    "Content-Type": "application/json",
+    "Content-Type": "text/plain",  # plain text for end user
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Methods": "POST,OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type",
@@ -34,7 +34,7 @@ def simple_summary(text, max_sentences=2):
 def keyword_response(text):
     lower = text.lower()
     if 'internet' in lower:
-        return "I’m sorry, I cannot fix internet issues directly, but here are some troubleshooting steps you can try..."
+        return "It looks like your internet is down. Check your modem lights, ensure cables are connected, and restart your router."
     if 'help' in lower:
         return "I can assist with information and summaries! Please provide a topic or question."
     return None
@@ -66,13 +66,12 @@ def run_ai(text):
                 return 'No output returned from Bedrock'
         except Exception as e:
             print("Bedrock error:", str(e))
-            # Fallback to placeholder
             fb = keyword_response(text)
             if fb:
                 return fb
             return simple_summary(text)
-    
-    # Placeholder AI logic if Bedrock not enabled
+
+    # Fallback if Bedrock not enabled
     fb = keyword_response(text)
     if fb:
         return fb
@@ -99,7 +98,7 @@ def lambda_handler(event, context):
             return {
                 'statusCode': 400,
                 'headers': CORS_HEADERS,
-                'body': json.dumps({'error': 'Missing text'})
+                'body': 'Missing text'
             }
 
         # Generate unique request ID
@@ -121,19 +120,16 @@ def lambda_handler(event, context):
             'result': ai_result
         })
 
-        # Return result with CORS headers
+        # Return plain text to end user
         return {
             'statusCode': 200,
             'headers': CORS_HEADERS,
-            'body': json.dumps({
-                'requestId': request_id,
-                'result': ai_result
-            })
+            'body': f"Request {request_id}: {ai_output}"
         }
 
     except Exception as e:
         return {
             'statusCode': 500,
             'headers': CORS_HEADERS,
-            'body': json.dumps({'error': str(e)})
+            'body': f"Error: {str(e)}"
         }
