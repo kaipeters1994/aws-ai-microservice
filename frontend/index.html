@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>AI Microservice</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 40px;
+        }
+
+        textarea {
+            width: 100%;
+            max-width: 600px;
+        }
+
+        button {
+            padding: 8px 16px;
+            font-size: 16px;
+        }
+
+        pre {
+            background: #f4f4f4;
+            padding: 10px;
+            max-width: 600px;
+            overflow-x: auto;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>AI Text Summarizer</h1>
+
+    <textarea id="input" rows="6" placeholder="Type your text here..."></textarea>
+    <br><br>
+
+    <button onclick="send()">Submit</button>
+
+    <h3>Response:</h3>
+    <pre id="output">No response yet.</pre>
+
+    <script>
+        async function send() {
+            const text = document.getElementById('input').value.trim();
+            if (!text) {
+                alert("Please enter some text.");
+                return;
+            }
+
+            const output = document.getElementById("output");
+            output.textContent = "Processing...";
+
+            try {
+                const res = await fetch("https://dj18dn3rr0.execute-api.us-east-1.amazonaws.com/process", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ text })
+                });
+
+                if (!res.ok) {
+                    output.textContent = `Error: ${res.status} ${res.statusText}`;
+                    return;
+                }
+
+                const data = await res.json();
+                output.textContent = JSON.stringify(data, null, 2);
+            } catch (err) {
+                output.textContent = `Fetch error: ${err.message}`;
+            }
+        }
+    </script>
+</body>
+
+</html>

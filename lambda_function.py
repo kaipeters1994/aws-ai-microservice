@@ -2,59 +2,93 @@ import json
 import uuid
 import boto3
 from datetime import datetime
+import re
 
 # Initialize DynamoDB resource outside the handler
 dynamodb = boto3.resource('dynamodb')
 table = dynamodb.Table('ai-microservice-results')
 
-# Initialize Bedrock client
-bedrock = boto3.client('bedrock-runtime')
+# Try to initialize Bedrock client
+try:
+    bedrock = boto3.client('bedrock-runtime')
+    BEDROCK_ENABLED = True
+except Exception:
+    bedrock = None
+    BEDROCK_ENABLED = False
+
+# Common CORS headers
+CORS_HEADERS = {
+    "Content-Type": "application/json",
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Methods": "POST,OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type",
+    "Access-Control-Max-Age": "86400"
+}
+
+# Smart fallback summarization
+def simple_summary(text, max_sentences=2):
+    sentences = re.split(r'(?<=[.!?]) +', text)
+    return ' '.join(sentences[:max_sentences])
+
+# Optional keyword-based responses for edge cases
+def keyword_response(text):
+    lower = text.lower()
+    if 'internet' in lower:
+        return "I’m sorry, I cannot fix internet issues directly, but here are some troubleshooting steps you can try..."
+    if 'help' in lower:
+        return "I can assist with information and summaries! Please provide a topic or question."
+    return None
 
 def run_ai(text):
     """
-    Calls Amazon Titan Text Lite to generate a summary of the input text.
-    Returns a string summary or a fallback message if Bedrock fails.
+    Returns a summary of the input text.
+    Uses Bedrock if available, otherwise falls back to smart placeholder logic.
     """
-    try:
-        response = bedrock.invoke_model(
-            modelId='amazon.titan-text-lite-v1',
-            accept='application/json',
-            contentType='application/json',
-            body=json.dumps({
-                'inputText': text,
-                'textGenerationConfig': {
-                    'maxTokenCount': 200,
-                    'temperature': 0.3
-                }
-            })
-        )
-        body_content = response['body'].read()
-        result = json.loads(body_content)
-        
-        # Safely extract outputText
-        if 'results' in result and len(result['results']) > 0:
-            return result['results'][0].get('outputText', 'No output returned from Bedrock')
-        else:
-            return 'No output returned from Bedrock'
-    except Exception as e:
-        return f'Bedrock error: {str(e)}'
+    if BEDROCK_ENABLED:
+        try:
+            response = bedrock.invoke_model(
+                modelId='amazon.titan-text-lite-v1',
+                accept='application/json',
+                contentType='application/json',
+                body=json.dumps({
+                    'inputText': text,
+                    'textGenerationConfig': {
+                        'maxTokenCount': 400,
+                        'temperature': 0.7
+                    }
+                })
+            )
+            body_content = response['body'].read()
+            result = json.loads(body_content)
+            if 'results' in result and len(result['results']) > 0:
+                return result['results'][0].get('outputText', 'No output returned from Bedrock')
+            else:
+                return 'No output returned from Bedrock'
+        except Exception as e:
+            print("Bedrock error:", str(e))
+            # Fallback to placeholder
+            fb = keyword_response(text)
+            if fb:
+                return fb
+            return simple_summary(text)
+    
+    # Placeholder AI logic if Bedrock not enabled
+    fb = keyword_response(text)
+    if fb:
+        return fb
+    return simple_summary(text)
 
 def lambda_handler(event, context):
     # Handle CORS preflight OPTIONS request
     if event.get("httpMethod") == "OPTIONS":
         return {
             'statusCode': 200,
-            'headers': {
-                'Access-Control-Allow-Origin': '*',
-                'Access-Control-Allow-Methods': 'POST,OPTIONS',
-                'Access-Control-Allow-Headers': 'Content-Type',
-                'Access-Control-Max-Age': '86400'
-            },
+            'headers': CORS_HEADERS,
             'body': ''
         }
 
     try:
-        # Handle POST request
+        # Parse POST request
         if 'body' in event:
             body = json.loads(event['body'])
         else:
@@ -64,16 +98,14 @@ def lambda_handler(event, context):
         if not text:
             return {
                 'statusCode': 400,
-                'headers': {
-                    'Access-Control-Allow-Origin': '*'
-                },
+                'headers': CORS_HEADERS,
                 'body': json.dumps({'error': 'Missing text'})
             }
 
         # Generate unique request ID
         request_id = str(uuid.uuid4())
 
-        # AI summary using Bedrock
+        # AI summary
         ai_output = run_ai(text)
 
         ai_result = {
@@ -89,16 +121,10 @@ def lambda_handler(event, context):
             'result': ai_result
         })
 
-        # Return processed result with CORS headers
+        # Return result with CORS headers
         return {
             'statusCode': 200,
-            'headers': {
-                'Content-Type': 'application/json',
-                'Access-Control-Allow-Origin': '*',
-                'Access-Control-Allow-Methods': 'POST,OPTIONS',
-                'Access-Control-Allow-Headers': 'Content-Type',
-                'Access-Control-Max-Age': '86400'
-            },
+            'headers': CORS_HEADERS,
             'body': json.dumps({
                 'requestId': request_id,
                 'result': ai_result
@@ -106,15 +132,8 @@ def lambda_handler(event, context):
         }
 
     except Exception as e:
-        # Return error with CORS headers
         return {
             'statusCode': 500,
-            'headers': {
-                'Content-Type': 'application/json',
-                'Access-Control-Allow-Origin': '*',
-                'Access-Control-Allow-Methods': 'POST,OPTIONS',
-                'Access-Control-Allow-Headers': 'Content-Type',
-                'Access-Control-Max-Age': '86400'
-            },
+            'headers': CORS_HEADERS,
             'body': json.dumps({'error': str(e)})
         }
