@@ -2,7 +2,6 @@ import json
 import uuid
 import boto3
 from datetime import datetime
-import re
 
 # Initialize DynamoDB resource outside the handler
 dynamodb = boto3.resource('dynamodb')
@@ -18,31 +17,17 @@ except Exception:
 
 # Common CORS headers
 CORS_HEADERS = {
-    "Content-Type": "text/plain",  # plain text for end user
+    "Content-Type": "text/plain",
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Methods": "POST,OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type",
     "Access-Control-Max-Age": "86400"
 }
 
-# Smart fallback summarization
-def simple_summary(text, max_sentences=2):
-    sentences = re.split(r'(?<=[.!?]) +', text)
-    return ' '.join(sentences[:max_sentences])
-
-# Optional keyword-based responses for edge cases
-def keyword_response(text):
-    lower = text.lower()
-    if 'internet' in lower:
-        return "I’m sorry, I cannot fix internet issues directly, but here are some troubleshooting steps you can try..."
-    if 'help' in lower:
-        return "I can assist with information and summaries! Please provide a topic or question."
-    return None
-
 def run_ai(text):
     """
     Returns a summary of the input text.
-    Uses Bedrock if available, otherwise falls back to smart placeholder logic.
+    Uses Bedrock if available, otherwise falls back to placeholder logic.
     """
     if BEDROCK_ENABLED:
         try:
@@ -66,16 +51,10 @@ def run_ai(text):
                 return 'No output returned from Bedrock'
         except Exception as e:
             print("Bedrock error:", str(e))
-            fb = keyword_response(text)
-            if fb:
-                return fb
-            return simple_summary(text)
+            return "Thank you for your inquiry! We have received your request and will get back to you."
     
-    # Placeholder AI logic if Bedrock not enabled
-    fb = keyword_response(text)
-    if fb:
-        return fb
-    return simple_summary(text)
+    # Fallback message if Bedrock not available
+    return "Thank you for your inquiry! We have received your request and will get back to you."
 
 def lambda_handler(event, context):
     # Handle CORS preflight OPTIONS request
@@ -104,7 +83,7 @@ def lambda_handler(event, context):
         # Generate unique request ID
         request_id = str(uuid.uuid4())
 
-        # AI summary
+        # AI summary (for logging)
         ai_output = run_ai(text)
 
         ai_result = {
@@ -120,11 +99,11 @@ def lambda_handler(event, context):
             'result': ai_result
         })
 
-        # Return plain text to end user
+        # Return polite, generic message to the user
         return {
             'statusCode': 200,
             'headers': CORS_HEADERS,
-            'body': f"Request {request_id}: {ai_output}"
+            'body': f"Request {request_id}: Thank you for your inquiry! We have received your request and will get back to you."
         }
 
     except Exception as e:

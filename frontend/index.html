@@ -1,73 +1,95 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 
 <head>
-    <title>AI Microservice</title>
+    <meta charset="UTF-8">
+    <title>Enter Request Below</title>
     <style>
         body {
             font-family: Arial, sans-serif;
             margin: 40px;
+            background-color: #f8f9fa;
+        }
+
+        h1 {
+            color: #333;
+        }
+
+        #inputArea,
+        #outputArea {
+            margin-top: 20px;
         }
 
         textarea {
             width: 100%;
-            max-width: 600px;
+            height: 100px;
+            font-size: 16px;
+            padding: 10px;
+            box-sizing: border-box;
         }
 
         button {
-            padding: 8px 16px;
+            margin-top: 10px;
+            padding: 10px 20px;
             font-size: 16px;
         }
 
-        pre {
-            background: #f4f4f4;
+        #output {
+            margin-top: 20px;
             padding: 10px;
-            max-width: 600px;
-            overflow-x: auto;
+            background-color: #e9ecef;
+            border-radius: 5px;
+            white-space: pre-wrap;
         }
     </style>
 </head>
 
 <body>
-    <h1>Submit Request Below</h1>
+    <h1>Enter Request Below</h1>
 
-    <textarea id="input" rows="6" placeholder="Type your text here..."></textarea>
-    <br><br>
+    <div id="inputArea">
+        <textarea id="userInput" placeholder="Type your request here..."></textarea>
+        <br>
+        <button id="submitBtn">Submit</button>
+    </div>
 
-    <button onclick="send()">Submit</button>
-
-    <h3>Response:</h3>
-    <pre id="output">No response yet.</pre>
+    <div id="outputArea">
+        <h2>Response:</h2>
+        <div id="output"></div>
+    </div>
 
     <script>
-        async function send() {
-            const text = document.getElementById('input').value.trim();
+        const submitBtn = document.getElementById('submitBtn');
+        const userInput = document.getElementById('userInput');
+        const outputDiv = document.getElementById('output');
+
+        const apiUrl = "https://dj18dn3rr0.execute-api.us-east-1.amazonaws.com/process";
+
+        submitBtn.addEventListener('click', () => {
+            const text = userInput.value.trim();
             if (!text) {
-                alert("Please enter some text.");
+                outputDiv.innerText = "Please enter some text.";
                 return;
             }
 
-            const output = document.getElementById("output");
-            output.textContent = "Processing...";
+            outputDiv.innerText = "Processing...";
 
-            try {
-                const res = await fetch("https://dj18dn3rr0.execute-api.us-east-1.amazonaws.com/process", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ text })
+            fetch(apiUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ text })
+            })
+                .then(response => response.text())
+                .then(data => {
+                    outputDiv.innerText = data;
+                })
+                .catch(err => {
+                    console.error(err);
+                    outputDiv.innerText = "Error: " + err.message;
                 });
-
-                if (!res.ok) {
-                    output.textContent = `Error: ${res.status} ${res.statusText}`;
-                    return;
-                }
-
-                const data = await res.json();
-                output.textContent = JSON.stringify(data, null, 2);
-            } catch (err) {
-                output.textContent = `Fetch error: ${err.message}`;
-            }
-        }
+        });
     </script>
 </body>
 
