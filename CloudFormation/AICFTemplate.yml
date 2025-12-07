@@ -1,0 +1,151 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "AI Text Summarizer Project - Fully Parameterized"
+
+Parameters:
+  BucketName:
+    Type: String
+    Description: "Name for the S3 bucket to host the static website"
+    MinLength: 3
+    MaxLength: 63
+    AllowedPattern: "[a-z0-9\\-]+"
+    ConstraintDescription: "Bucket name must be 3-63 characters, lowercase letters, numbers, or hyphens."
+
+  LambdaFunctionName:
+    Type: String
+    Default: aiProcessor
+    Description: "Name for the Lambda function"
+
+  DynamoDBTableName:
+    Type: String
+    Default: ai-microservice-results
+    Description: "Name of the DynamoDB table"
+
+  LambdaS3Bucket:
+    Type: String
+    Description: "S3 bucket where Lambda deployment zip is stored"
+
+  LambdaS3Key:
+    Type: String
+    Description: "S3 key (filename) for the Lambda zip package"
+
+Resources:
+
+  # S3 Bucket for static website
+  StaticWebsiteBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Ref BucketName
+      WebsiteConfiguration:
+        IndexDocument: index.html
+        ErrorDocument: index.html
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: false
+        BlockPublicPolicy: false
+        IgnorePublicAcls: false
+        RestrictPublicBuckets: false
+
+  StaticWebsiteBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref StaticWebsiteBucket
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: "*"
+            Action: "s3:GetObject"
+            Resource: !Sub "${StaticWebsiteBucket.Arn}/*"
+
+  # DynamoDB Table
+  AIResultsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Ref DynamoDBTableName
+      AttributeDefinitions:
+        - AttributeName: requestID
+          AttributeType: S
+      KeySchema:
+        - AttributeName: requestID
+          KeyType: HASH
+      BillingMode: PAY_PER_REQUEST
+
+  # IAM Role for Lambda
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${LambdaFunctionName}-role"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+        - arn:aws:iam::aws:policy/AmazonDynamoDBFullAccess
+        # Optional Bedrock access
+        # - arn:aws:iam::aws:policy/AmazonBedrockFullAccess
+
+  # Lambda Function
+  AIProcessorLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Ref LambdaFunctionName
+      Handler: ai_lambda.lambda_handler  # adjust filename.function
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Runtime: python3.11
+      Timeout: 15
+      MemorySize: 256
+      Code:
+        S3Bucket: !Ref LambdaS3Bucket
+        S3Key: !Ref LambdaS3Key
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref AIResultsTable
+
+  # API Gateway
+  AIProcessorApi:
+    Type: AWS::ApiGateway::RestApi
+    Properties:
+      Name: !Sub "${LambdaFunctionName}-api"
+
+  APIProcessResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      ParentId: !GetAtt AIProcessorApi.RootResourceId
+      PathPart: process
+      RestApiId: !Ref AIProcessorApi
+
+  APIProcessMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref AIProcessorApi
+      ResourceId: !Ref APIProcessResource
+      HttpMethod: POST
+      AuthorizationType: NONE
+      Integration:
+        IntegrationHttpMethod: POST
+        Type: AWS_PROXY
+        Uri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${AIProcessorLambda.Arn}/invocations
+
+  LambdaApiPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref AIProcessorLambda
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${AIProcessorApi}/*/POST/process
+
+Outputs:
+  WebsiteURL:
+    Description: "Static Website URL"
+    Value: !GetAtt StaticWebsiteBucket.WebsiteURL
+
+  APIEndpoint:
+    Description: "Invoke URL for API Gateway POST /process"
+    Value: !Sub "https://${AIProcessorApi}.execute-api.${AWS::Region}.amazonaws.com/prod/process"
+
+  DynamoDBTable:
+    Description: "DynamoDB Table Name"
+    Value: !Ref AIResultsTable
